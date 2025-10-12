@@ -1,0 +1,108 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- === GUI Setup ===
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoFarmGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- UI Layout Frame
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 160, 0, 120)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BackgroundTransparency = 0.2
+frame.Parent = screenGui
+
+local uiList = Instance.new("UIListLayout")
+uiList.Padding = UDim.new(0, 5)
+uiList.FillDirection = Enum.FillDirection.Vertical
+uiList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+uiList.VerticalAlignment = Enum.VerticalAlignment.Top
+uiList.Parent = frame
+
+-- === Auto Dig Button ===
+local digButton = Instance.new("TextButton")
+digButton.Size = UDim2.new(1, -10, 0, 50)
+digButton.Text = "Auto Dig: OFF"
+digButton.TextScaled = true
+digButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+digButton.TextColor3 = Color3.new(1, 1, 1)
+digButton.Parent = frame
+
+local autoDigEnabled = false
+
+-- === Auto Shake Button ===
+local shakeButton = Instance.new("TextButton")
+shakeButton.Size = UDim2.new(1, -10, 0, 50)
+shakeButton.Text = "Auto Shake: OFF"
+shakeButton.TextScaled = true
+shakeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+shakeButton.TextColor3 = Color3.new(1, 1, 1)
+shakeButton.Parent = frame
+
+local autoShakeEnabled = false
+
+-- === Auto Dig Loop ===
+task.spawn(function()
+	while true do
+		if autoDigEnabled then
+			local tool = character:FindFirstChild("Aurora Pan")
+			if tool then
+				local scriptsFolder = tool:FindFirstChild("Scripts")
+				if scriptsFolder then
+					local collect = scriptsFolder:FindFirstChild("Collect")
+					if collect then
+						local args = { 1 }
+						collect:InvokeServer(unpack(args))
+					end
+				end
+			end
+		end
+		task.wait(0.2)
+	end
+end)
+
+-- === Auto Shake Loop ===
+task.spawn(function()
+	while true do
+		if autoShakeEnabled then
+			local tool = character:FindFirstChild("Aurora Pan")
+			if tool then
+				local scriptsFolder = tool:FindFirstChild("Scripts")
+				if scriptsFolder then
+					local shake = scriptsFolder:FindFirstChild("Shake")
+					if shake then
+						shake:FireServer()
+					end
+				end
+			end
+		end
+		task.wait(0.2)
+	end
+end)
+
+-- === Button Events ===
+digButton.MouseButton1Click:Connect(function()
+	autoDigEnabled = not autoDigEnabled
+	if autoDigEnabled then
+		digButton.Text = "Auto Dig: ON"
+		digButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+	else
+		digButton.Text = "Auto Dig: OFF"
+		digButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+	end
+end)
+
+shakeButton.MouseButton1Click:Connect(function()
+	autoShakeEnabled = not autoShakeEnabled
+	if autoShakeEnabled then
+		shakeButton.Text = "Auto Shake: ON"
+		shakeButton.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+	else
+		shakeButton.Text = "Auto Shake: OFF"
+		shakeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+	end
+end)
