@@ -1,6 +1,13 @@
+task.wait(4)
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local sellAllRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Shop"):WaitForChild("SellAll")
 
 -- === GUI Setup ===
 local screenGui = Instance.new("ScreenGui")
@@ -8,9 +15,8 @@ screenGui.Name = "AutoFarmGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- UI Layout Frame
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 160, 0, 120)
+frame.Size = UDim2.new(0, 160, 0, 300) -- extra height for hop button
 frame.Position = UDim2.new(0, 20, 0, 20)
 frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 frame.BackgroundTransparency = 0.2
@@ -31,7 +37,6 @@ digButton.TextScaled = true
 digButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
 digButton.TextColor3 = Color3.new(1, 1, 1)
 digButton.Parent = frame
-
 local autoDigEnabled = false
 
 -- === Auto Shake Button ===
@@ -42,8 +47,65 @@ shakeButton.TextScaled = true
 shakeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
 shakeButton.TextColor3 = Color3.new(1, 1, 1)
 shakeButton.Parent = frame
-
 local autoShakeEnabled = false
+
+-- === Sell All Button ===
+local sellAllButton = Instance.new("TextButton")
+sellAllButton.Size = UDim2.new(1, -10, 0, 50)
+sellAllButton.Text = "💰 Sell All"
+sellAllButton.TextScaled = true
+sellAllButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+sellAllButton.TextColor3 = Color3.new(1, 1, 1)
+sellAllButton.Parent = frame
+
+-- === Auto Teleport Button ===
+local teleportButton = Instance.new("TextButton")
+teleportButton.Size = UDim2.new(1, -10, 0, 50)
+teleportButton.Text = "Auto Teleport: OFF"
+teleportButton.TextScaled = true
+teleportButton.BackgroundColor3 = Color3.fromRGB(128, 0, 255)
+teleportButton.TextColor3 = Color3.new(1, 1, 1)
+teleportButton.Parent = frame
+local autoTeleportEnabled = false
+local TELEPORT_INTERVAL = 0.1
+
+-- === Server Hop Button (NEW) ===
+local hopButton = Instance.new("TextButton")
+hopButton.Size = UDim2.new(1, -10, 0, 50)
+hopButton.Text = "🌐 Server Hop"
+hopButton.TextScaled = true
+hopButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+hopButton.TextColor3 = Color3.new(1, 1, 1)
+hopButton.Parent = frame
+
+-- === Helper: Random Geode Teleport ===
+local function getHumanoidRoot()
+	character = player.Character or player.CharacterAdded:Wait()
+	return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function getRandomGeode()
+	local geode = workspace:FindFirstChild("Geode")
+	if not geode then return nil end
+	local models = {}
+	for _, m in ipairs(geode:GetChildren()) do
+		if m:IsA("Model") and m:FindFirstChild("Part") then
+			table.insert(models, m)
+		end
+	end
+	if #models == 0 then return nil end
+	return models[math.random(1, #models)]
+end
+
+local function teleportToRandomGeode()
+	local target = getRandomGeode()
+	if not target then return end
+	local root = getHumanoidRoot()
+	if not root then return end
+	local part = target:FindFirstChild("Part")
+	if not part then return end
+	root.CFrame = part.CFrame + Vector3.new(0, 2, 0)
+end
 
 -- === Auto Dig Loop ===
 task.spawn(function()
@@ -55,8 +117,7 @@ task.spawn(function()
 				if scriptsFolder then
 					local collect = scriptsFolder:FindFirstChild("Collect")
 					if collect then
-						local args = { 1 }
-						collect:InvokeServer(unpack(args))
+						collect:InvokeServer(1)
 					end
 				end
 			end
@@ -80,29 +141,72 @@ task.spawn(function()
 				end
 			end
 		end
-		task.wait(0.05)
+		task.wait(0.2)
 	end
 end)
+
+-- === Auto Teleport Loop ===
+task.spawn(function()
+	while true do
+		if autoTeleportEnabled then
+			teleportToRandomGeode()
+			task.wait(TELEPORT_INTERVAL)
+		else
+			task.wait(0.2)
+		end
+	end
+end)
+
+-- === Server Hop Function (NEW) ===
+local function hopToRandomServer()
+	local gameId = game.PlaceId
+	local servers = {}
+	local cursor = ""
+
+	-- Try to find available servers
+	local success, err = pcall(function()
+		local url = "https://games.roblox.com/v1/games/"..gameId.."/servers/Public?sortOrder=Asc&limit=100"
+		local data = HttpService:JSONDecode(game:HttpGet(url))
+		for _, server in ipairs(data.data) do
+			if server.playing < server.maxPlayers and server.id ~= game.JobId then
+				table.insert(servers, server)
+			end
+		end
+	end)
+
+	if success and #servers > 0 then
+		local chosen = servers[math.random(1, #servers)]
+		TeleportService:TeleportToPlaceInstance(gameId, chosen.id, player)
+	else
+		warn("[Server Hop] No available servers found. Retrying in 5s...")
+		task.delay(5, hopToRandomServer)
+	end
+end
 
 -- === Button Events ===
 digButton.MouseButton1Click:Connect(function()
 	autoDigEnabled = not autoDigEnabled
-	if autoDigEnabled then
-		digButton.Text = "Auto Dig: ON"
-		digButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-	else
-		digButton.Text = "Auto Dig: OFF"
-		digButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-	end
+	digButton.Text = autoDigEnabled and "Auto Dig: ON" or "Auto Dig: OFF"
+	digButton.BackgroundColor3 = autoDigEnabled and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
 end)
 
 shakeButton.MouseButton1Click:Connect(function()
 	autoShakeEnabled = not autoShakeEnabled
-	if autoShakeEnabled then
-		shakeButton.Text = "Auto Shake: ON"
-		shakeButton.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
-	else
-		shakeButton.Text = "Auto Shake: OFF"
-		shakeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-	end
+	shakeButton.Text = autoShakeEnabled and "Auto Shake: ON" or "Auto Shake: OFF"
+	shakeButton.BackgroundColor3 = autoShakeEnabled and Color3.fromRGB(255, 200, 0) or Color3.fromRGB(200, 0, 0)
+end)
+
+sellAllButton.MouseButton1Click:Connect(function()
+	sellAllRemote:InvokeServer()
+end)
+
+teleportButton.MouseButton1Click:Connect(function()
+	autoTeleportEnabled = not autoTeleportEnabled
+	teleportButton.Text = autoTeleportEnabled and "Auto Teleport: ON" or "Auto Teleport: OFF"
+	teleportButton.BackgroundColor3 = autoTeleportEnabled and Color3.fromRGB(0, 200, 200) or Color3.fromRGB(128, 0, 255)
+end)
+
+-- === Server Hop Button Event ===
+hopButton.MouseButton1Click:Connect(function()
+	hopToRandomServer()
 end)
