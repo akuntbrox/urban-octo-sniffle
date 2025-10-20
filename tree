@@ -1,0 +1,242 @@
+-- Multi-tree ESP with spawn listening + distance (meters) + smaller font
+-- Put in a LocalScript (e.g., StarterPlayerScripts)
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local map = workspace:WaitForChild("Map")
+local forest = map:WaitForChild("Forest")
+
+-- Configure targets (name -> color)
+local TARGETS = {
+	["Golden Tree"] = Color3.fromRGB(255, 215, 0),
+	["Ghost Tree"] = Color3.fromRGB(192, 192, 192),
+	["Veinwood"] = Color3.fromRGB(144, 238, 144),
+}
+
+-- If you want prefix matching, set to true
+local MATCH_PREFIX = false
+
+-- Distance conversion: Roblox uses studs. 1 stud ≈ 0.28 meters.
+local METERS_PER_STUD = 0.28
+
+-- Label styling
+local LABEL_WIDTH  = 120
+local LABEL_HEIGHT = 36      -- smaller
+local LABEL_OFFSET = Vector3.new(0, 4, 0)
+local LABEL_TEXTSIZE = 14    -- smaller font
+
+-- Highlight styling (tweaked so color shows clearly)
+local FILL_TRANSPARENCY = 0.4
+local OUTLINE_TRANSPARENCY = 0.15
+
+-- Internal watchers
+local watchers = {} -- [Model] = { conns = {...}, ui = {billboard=..., label=..., highlight=...} }
+
+local function isTargetName(name)
+	if TARGETS[name] then return true end
+	if MATCH_PREFIX then
+		for key in pairs(TARGETS) do
+			if string.sub(name, 1, #key) == key then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function colorForName(name)
+	if TARGETS[name] then return TARGETS[name] end
+	if MATCH_PREFIX then
+		for key, col in pairs(TARGETS) do
+			if string.sub(name, 1, #key) == key then
+				return col
+			end
+		end
+	end
+	return Color3.fromRGB(255, 215, 0)
+end
+
+local function getAnyPart(model)
+	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then
+		return model.PrimaryPart
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			return d
+		end
+	end
+	return nil
+end
+
+local function ensurePrimaryPart(model)
+	if model.PrimaryPart and model.PrimaryPart.Parent == model then return model.PrimaryPart end
+	local p = getAnyPart(model)
+	if p then pcall(function() model.PrimaryPart = p end) end
+	return p
+end
+
+local function getModelWorldPosition(model)
+	local part = ensurePrimaryPart(model)
+	if part then return part.Position end
+	-- fallback using pivot if available
+	if model.GetPivot then
+		local cf = model:GetPivot()
+		return cf.Position
+	end
+	return nil
+end
+
+local function clearESP(model)
+	local ui = watchers[model] and watchers[model].ui
+	if ui then
+		if ui.highlight then ui.highlight:Destroy() end
+		if ui.billboard then ui.billboard:Destroy() end
+	end
+end
+
+local function stopWatching(model)
+	local info = watchers[model]
+	if not info then return end
+	for _, c in ipairs(info.conns or {}) do
+		pcall(function() c:Disconnect() end)
+	end
+	clearESP(model)
+	watchers[model] = nil
+end
+
+local function attachESP(model)
+	clearESP(model)
+
+	local col = colorForName(model.Name)
+
+	-- Highlight (parenting to model is fine; color now very visible)
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESP_Highlight"
+	highlight.Adornee = model
+	highlight.FillColor = col
+	highlight.FillTransparency = FILL_TRANSPARENCY
+	highlight.OutlineColor = col
+	highlight.OutlineTransparency = OUTLINE_TRANSPARENCY
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = model
+
+	-- Billboard label
+	local part = ensurePrimaryPart(model)
+	if not part then
+		return { highlight = highlight, billboard = nil, label = nil }
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESP_Label"
+	billboard.Adornee = part
+	billboard.Size = UDim2.new(0, LABEL_WIDTH, 0, LABEL_HEIGHT)
+	billboard.StudsOffset = LABEL_OFFSET
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 0 -- unlimited
+	billboard.Parent = model
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = model.Name -- distance appended during updates
+	label.Font = Enum.Font.GothamMedium
+	label.TextScaled = false
+	label.TextSize = LABEL_TEXTSIZE
+	label.TextColor3 = col
+	label.TextStrokeTransparency = 0.5
+	label.Parent = billboard
+
+	return { highlight = highlight, billboard = billboard, label = label }
+end
+
+local function startWatching(model)
+	if watchers[model] then return end
+
+	local ui = attachESP(model)
+	local conns = {}
+
+	-- Keep billboard attached if PrimaryPart/parts change
+	table.insert(conns, model:GetPropertyChangedSignal("PrimaryPart"):Connect(function()
+		if ui and ui.billboard then
+			local newPart = ensurePrimaryPart(model)
+			if newPart then ui.billboard.Adornee = newPart end
+		end
+	end))
+
+	table.insert(conns, model.DescendantAdded:Connect(function(inst)
+		if inst:IsA("BasePart") and ui and ui.billboard then
+			local newPart = ensurePrimaryPart(model)
+			if newPart then ui.billboard.Adornee = newPart end
+		end
+	end))
+
+	table.insert(conns, model.DescendantRemoving:Connect(function(inst)
+		if ui and ui.billboard and ui.billboard.Adornee == inst then
+			task.defer(function()
+				if model.Parent then
+					local newPart = ensurePrimaryPart(model)
+					if newPart then ui.billboard.Adornee = newPart end
+				end
+			end)
+		end
+	end))
+
+	-- If renamed, update color + label (or drop if no longer a target)
+	table.insert(conns, model:GetPropertyChangedSignal("Name"):Connect(function()
+		if not isTargetName(model.Name) then
+			stopWatching(model)
+			return
+		end
+		if ui and ui.label then ui.label.Text = model.Name end
+		if ui and ui.highlight then ui.highlight.FillColor = colorForName(model.Name) end
+	end))
+
+	-- If removed from world, stop (spawn listener will pick up new ones)
+	table.insert(conns, model.AncestryChanged:Connect(function(_, parent)
+		if parent == nil then
+			stopWatching(model)
+		end
+	end))
+
+	watchers[model] = { conns = conns, ui = ui }
+end
+
+-- Initial scan of all existing targets
+for _, inst in ipairs(forest:GetDescendants()) do
+	if inst:IsA("Model") and isTargetName(inst.Name) then
+		startWatching(inst)
+	end
+end
+
+-- Listen for spawns/respawns
+forest.DescendantAdded:Connect(function(inst)
+	if inst:IsA("Model") and isTargetName(inst.Name) then
+		startWatching(inst)
+	end
+end)
+
+-- Live distance updater (throttled)
+local accum = 0
+RunService.RenderStepped:Connect(function(dt)
+	accum = accum + dt
+	if accum < 0.15 then return end -- ~6–7 updates/sec
+	accum = 0
+
+	if not Camera then return end
+
+	for model, info in pairs(watchers) do
+		local ui = info.ui
+		if ui and ui.label and model and model.Parent then
+			local pos = getModelWorldPosition(model)
+			if pos then
+				local camPos = Camera.CFrame.Position
+				local studs = (pos - camPos).Magnitude
+				local meters = math.floor(studs * METERS_PER_STUD + 0.5)
+				ui.label.Text = string.format("%s  •  %dm", model.Name, meters)
+			end
+		end
+	end
+end)
