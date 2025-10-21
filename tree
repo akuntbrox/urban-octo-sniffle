@@ -14,7 +14,7 @@ local TARGETS = {
 	["Golden Tree"] = Color3.fromRGB(255, 215, 0),
 	["Overwood"] = Color3.fromRGB(255, 0, 0),
 	["Jacaranda"] = Color3.fromRGB(183, 0, 255),
-	["Ghost Tree"] = Color3.fromRGB(0, 255, 226),
+	["Ghost Tree"] = Color3.fromRGB(66, 141, 136),
 	["Veinwood"] = Color3.fromRGB(144, 238, 144),
 }
 
