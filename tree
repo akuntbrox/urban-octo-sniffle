@@ -12,7 +12,9 @@ local forest = map:WaitForChild("Forest")
 -- Configure targets (name -> color)
 local TARGETS = {
 	["Golden Tree"] = Color3.fromRGB(255, 215, 0),
-	["Ghost Tree"] = Color3.fromRGB(192, 192, 192),
+	["Overwood"] = Color3.fromRGB(255, 0, 0),
+	["Jacaranda"] = Color3.fromRGB(183, 0, 255),
+	["Ghost Tree"] = Color3.fromRGB(0, 255, 226),
 	["Veinwood"] = Color3.fromRGB(144, 238, 144),
 }
 
@@ -26,7 +28,7 @@ local METERS_PER_STUD = 0.28
 local LABEL_WIDTH  = 120
 local LABEL_HEIGHT = 36      -- smaller
 local LABEL_OFFSET = Vector3.new(0, 4, 0)
-local LABEL_TEXTSIZE = 14    -- smaller font
+local LABEL_TEXTSIZE = 13    -- smaller font
 
 -- Highlight styling (tweaked so color shows clearly)
 local FILL_TRANSPARENCY = 0.4
